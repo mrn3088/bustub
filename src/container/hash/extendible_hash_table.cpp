@@ -35,10 +35,8 @@ auto ExtendibleHashTable<K, V>::IndexOf(const K &key) -> size_t {
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::GetGlobalDepth() const -> int {
-  // std::scoped_lock<std::mutex> lock(latch_);
-  rwlatch_.RLock();
+  std::scoped_lock<std::mutex> lock(latch_);
   auto res = GetGlobalDepthInternal();
-  rwlatch_.RUnlock();
   return res;
 }
 
@@ -49,11 +47,8 @@ auto ExtendibleHashTable<K, V>::GetGlobalDepthInternal() const -> int {
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::GetLocalDepth(int dir_index) const -> int {
-  // std::scoped_lock<std::mutex> lock(latch_);
-  rwlatch_.RLock();
-  auto res = GetLocalDepthInternal(dir_index);
-  rwlatch_.RUnlock();
-  return res;
+  std::scoped_lock<std::mutex> lock(latch_);
+  return GetLocalDepthInternal(dir_index);
 }
 
 template <typename K, typename V>
@@ -63,11 +58,8 @@ auto ExtendibleHashTable<K, V>::GetLocalDepthInternal(int dir_index) const -> in
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::GetNumBuckets() const -> int {
-  // std::scoped_lock<std::mutex> lock(latch_);
-  rwlatch_.RLock();
-  auto res = GetNumBucketsInternal();
-  rwlatch_.RUnlock();
-  return res;
+  std::scoped_lock<std::mutex> lock(latch_);
+  return GetNumBucketsInternal();
 }
 
 template <typename K, typename V>
@@ -77,32 +69,24 @@ auto ExtendibleHashTable<K, V>::GetNumBucketsInternal() const -> int {
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Find(const K &key, V &value) -> bool {
-  // std::scoped_lock<std::mutex> lock(latch_);
-  rwlatch_.RLock();
+  std::scoped_lock<std::mutex> lock(latch_);
   size_t index = IndexOf(key);
-  auto res = dir_[index]->Find(key, value);
-  rwlatch_.RUnlock();
-  return res;
+  return dir_[index]->Find(key, value);
 }
 
 template <typename K, typename V>
 auto ExtendibleHashTable<K, V>::Remove(const K &key) -> bool {
-  // std::scoped_lock<std::mutex> lock(latch_);
-  rwlatch_.WLock();
+  std::scoped_lock<std::mutex> lock(latch_);
   size_t index = IndexOf(key);
-  auto res = dir_[index]->Remove(key);
-  rwlatch_.WUnlock();
-  return res;
+  return dir_[index]->Remove(key);
 }
 
 template <typename K, typename V>
 void ExtendibleHashTable<K, V>::Insert(const K &key, const V &value) {
-  // std::scoped_lock<std::mutex> lock(latch_);
-  rwlatch_.WLock();
+  std::scoped_lock<std::mutex> lock(latch_);
   while (true) {
     size_t index = IndexOf(key);
     if (dir_[index]->Insert(key, value)) {
-      rwlatch_.WUnlock();
       return;
     }
     size_t local_depth = GetLocalDepthInternal(index);
@@ -111,14 +95,13 @@ void ExtendibleHashTable<K, V>::Insert(const K &key, const V &value) {
       dir_[index]->IncrementDepth();
       RedistributeBucket(dir_[index]);
     } else {
-      for (int i = 0; i < num_buckets_; i++) {
+      size_t dir_size = dir_.size();
+      for (size_t i = 0; i < dir_size; i++) {
         dir_.push_back(dir_[i]);
       }
       global_depth_++;
-      num_buckets_ *= 2;
     }
   }
-  rwlatch_.WUnlock();
 }
 
 template <typename K, typename V>

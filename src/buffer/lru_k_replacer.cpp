@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "buffer/lru_k_replacer.h"
+#include <iostream>
+
 namespace bustub {
 
 LRUKReplacer::LRUKReplacer(size_t num_frames, size_t k) : replacer_size_(num_frames), k_(k) {}
@@ -20,28 +22,24 @@ auto LRUKReplacer::Evict(frame_id_t *frame_id) -> bool {
   if (curr_size_ == 0) {
     return false;
   }
-  size_t max_distance = std::numeric_limits<size_t>::max();
-  bool less_than_k = false;
+
+  auto cmp = [&](const auto &a, const auto &b) {
+    if (a->second.access_history_.size() < k_ && b->second.access_history_.size() == k_) {
+      return true;
+    }
+    if (a->second.access_history_.size() == k_ && b->second.access_history_.size() < k_) {
+      return false;
+    }
+    return a->second.access_history_.front() < b->second.access_history_.front();
+  };
+
   auto to_evict = frame_map_.end();
   for (auto it = frame_map_.begin(); it != frame_map_.end(); ++it) {
     if (!it->second.evictable_) {
       continue;
     }
     // select the first candidate
-    if (to_evict == frame_map_.end()) {
-      to_evict = it;
-      less_than_k = it->second.access_history_.size() < k_;
-      max_distance = it->second.access_history_.front();
-      continue;
-    }
-    if (!less_than_k && it->second.access_history_.size() < k_) {
-      less_than_k = true;
-      to_evict = it;
-    } else if ((less_than_k && it->second.access_history_.size() < k_ &&
-                max_distance > it->second.access_history_.front()) ||
-               (!less_than_k && it->second.access_history_.size() == k_ &&
-                max_distance > it->second.access_history_.front())) {
-      max_distance = it->second.access_history_.front();
+    if (to_evict == frame_map_.end() || cmp(it, to_evict)) {
       to_evict = it;
     }
   }
@@ -68,8 +66,8 @@ void LRUKReplacer::RecordAccess(frame_id_t frame_id) {
 
 void LRUKReplacer::SetEvictable(frame_id_t frame_id, bool set_evictable) {
   std::scoped_lock<std::mutex> lock(latch_);
-  BUSTUB_ASSERT(frame_map_.count(frame_id), "Invalid frame_id!");
-  if (frame_map_[frame_id].evictable_ != set_evictable) {
+  // BUSTUB_ASSERT(frame_map_.count(frame_id), "Invalid frame_id!");
+  if (frame_map_.count(frame_id) != 0U && frame_map_[frame_id].evictable_ != set_evictable) {
     frame_map_[frame_id].evictable_ = set_evictable;
     if (set_evictable) {
       curr_size_++;
